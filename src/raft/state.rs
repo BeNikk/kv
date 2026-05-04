@@ -72,3 +72,9 @@ pub struct AppendResponse {
     pub term: u64,
     pub success: bool,
 }
+
+#[derive(Debug, Clone)]
+pub enum Message {
+    RequestVote { to: NodeId, args: VoteRequest },
+    AppendEntries { to: NodeId, args: AppendRequest },
+}
