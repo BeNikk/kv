@@ -130,3 +130,41 @@ impl RaftNode {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::raft::{RaftNode, state::*};
+
+    fn make_leader(id: NodeId, peers: Vec<NodeId>) -> RaftNode {
+        let mut n = RaftNode::new(id, peers);
+        n.persistent.current_term = 1;
+        n.role = NodeRole::Leader;
+        for &p in &n.peers.clone() {
+            n.volatile.next_index.insert(p, 1);
+            n.volatile.match_index.insert(p, 0);
+        }
+        n
+    }
+
+    #[test]
+    fn propose_appends_to_log() {
+        let mut leader = make_leader(1, vec![2, 3]);
+        leader.propose(Command::Set {
+            key: "x".into(),
+            value: "42".into(),
+        });
+        assert_eq!(leader.last_log_index(), 1);
+    }
+
+    #[test]
+    fn commit_advances_after_majority_ack() {
+        let mut leader = make_leader(1, vec![2, 3]);
+        leader.propose(Command::Set {
+            key: "k".into(),
+            value: "v".into(),
+        });
+        leader.handle_append_response(2, true, 1);
+        assert_eq!(leader.volatile.commit_index, 1);
+    }
+}
