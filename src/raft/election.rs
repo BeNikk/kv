@@ -176,3 +176,39 @@ impl RaftNode {
             .collect()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::raft::RaftNode;
+
+    fn three_node_cluster() -> (RaftNode, RaftNode, RaftNode) {
+        (
+            RaftNode::new(1, vec![2, 3]),
+            RaftNode::new(2, vec![1, 3]),
+            RaftNode::new(3, vec![1, 2]),
+        )
+    }
+
+    #[test]
+    fn election_timeout_makes_candidate() {
+        let (mut n1, _, _) = three_node_cluster();
+        n1.on_election_timeout();
+        assert_eq!(n1.role, NodeRole::Candidate);
+        assert_eq!(n1.persistent.current_term, 1);
+    }
+
+    #[test]
+    fn majority_vote_makes_leader() {
+        let (mut n1, mut n2, _) = three_node_cluster();
+        let reqs = n1.on_election_timeout();
+        let req = match &reqs[0] {
+            Message::RequestVote { args, .. } => args.clone(),
+            _ => panic!(),
+        };
+        let resp = n2.handle_request_vote(req);
+        let msgs = n1.handle_vote_response(2, resp);
+        assert_eq!(n1.role, NodeRole::Leader);
+        assert!(!msgs.is_empty());
+    }
+}
