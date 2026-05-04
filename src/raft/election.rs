@@ -81,4 +81,98 @@ impl RaftNode {
             }
         }
     }
+
+    /// Handles a vote response from a peer during an election.
+    ///
+    /// This function is called after we (as a candidate) send RequestVote RPCs
+    /// and start receiving replies.
+    ///
+    /// It:
+    /// 1. Ignores responses if we are no longer a candidate
+    /// 2. Steps down if it sees a higher term (safety rule)
+    /// 3. Tracks votes that were granted
+    /// 4. Checks if we have a majority
+    /// 5. If majority is reached → becomes leader
+    pub fn handle_vote_response(&mut self, from: NodeId, resp: VoteResponse) -> Vec<Message> {
+        // If we are not a candidate anymore, ignore this response
+        // (we may already be follower or leader)
+        if self.role != NodeRole::Candidate {
+            return vec![];
+        }
+
+        // If response has higher term, we are outdated → step down
+        // This is a safety rule in Raft
+        if resp.term > self.persistent.current_term {
+            self.become_follower(resp.term);
+            return vec![];
+        }
+
+        // If vote was granted, record who voted for us
+        if resp.vote_granted {
+            self.votes_received.insert(from);
+        }
+
+        // Majority = more than half of all nodes (including self)
+        let majority = (self.peers.len() + 1) / 2 + 1;
+
+        // If we reached majority, we win the election
+        if self.votes_received.len() >= majority {
+            return self.become_leader();
+        }
+
+        // Otherwise, still waiting for more votes
+        vec![]
+    }
+
+    /// Called when this node becomes the leader.
+    ///
+    /// Responsibilities:
+    /// 1. Switch role to Leader
+    /// 2. Initialize replication state for all peers
+    /// 3. Send initial heartbeats to assert leadership
+    fn become_leader(&mut self) -> Vec<Message> {
+        // Mark self as leader
+        self.role = NodeRole::Leader;
+
+        let last_index = self.last_log_index();
+
+        // Initialize replication tracking for each follower
+        for &peer in &self.peers {
+            // Next log entry to send to each peer
+            self.volatile.next_index.insert(peer, last_index + 1);
+
+            // Highest known replicated log index for each peer
+            self.volatile.match_index.insert(peer, 0);
+        }
+
+        // Send initial heartbeats to all peers
+        self.send_heartbeats()
+    }
+
+    /// Sends empty AppendEntries messages (heartbeats)
+    ///
+    /// Heartbeats are used to:
+    /// - Maintain leadership
+    /// - Prevent new elections
+    /// - Tell followers "I am still alive"
+    pub fn send_heartbeats(&self) -> Vec<Message> {
+        self.peers
+            .iter()
+            .map(|&peer| Message::AppendEntries {
+                to: peer,
+                args: AppendRequest {
+                    term: self.persistent.current_term,
+                    leader_id: self.id,
+
+                    // Empty entries = heartbeat (no log replication yet)
+                    prev_log_index: 0,
+                    prev_log_term: 0,
+                    entries: vec![],
+
+                    // What the leader has committed so far
+                    leader_commit: self.volatile.commit_index,
+                },
+            })
+            .collect()
+    }
 }
