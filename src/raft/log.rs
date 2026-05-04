@@ -7,7 +7,7 @@ pub enum Command {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct LogEntry {
-    pub term:    u64, // era of leadership
-    pub index:   u64, // position of the command
+    pub term: u64,        // era of leadership
+    pub index: u64,       // position of the command
     pub command: Command, // command which will run
 }
