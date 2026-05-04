@@ -2,6 +2,7 @@ pub mod election;
 pub mod log;
 pub mod replication;
 pub mod state;
+use crate::storage::KvStore;
 use state::*;
 use std::collections::HashSet;
 
@@ -12,6 +13,7 @@ pub struct RaftNode {
     pub persistent: PersistentState,
     pub volatile: VolatileState,
     pub votes_received: HashSet<NodeId>,
+    pub store: KvStore,
 }
 
 impl RaftNode {
@@ -23,6 +25,7 @@ impl RaftNode {
             persistent: PersistentState::new(),
             volatile: VolatileState::new(),
             votes_received: HashSet::new(),
+            store: KvStore::default(),
         }
     }
 }
