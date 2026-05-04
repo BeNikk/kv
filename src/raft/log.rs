@@ -28,3 +28,15 @@ impl RaftNode {
         self.persistent.log.get((index - 1) as usize)
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::raft::RaftNode;
+
+    #[test]
+    fn empty_log_returns_zero() {
+        let node = RaftNode::new(1, vec![2, 3]);
+        assert_eq!(node.last_log_index(), 0);
+        assert_eq!(node.last_log_term(), 0);
+    }
+}
