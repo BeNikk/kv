@@ -20,3 +20,21 @@ impl PersistentState {
         Self { current_term: 0, voted_for: None, log: vec![] }
     }
 }
+// this is for the volatile state of a node, it is not persisted, it is reset when the node starts. 
+#[derive(Debug)]
+pub struct VolatileState {
+    pub commit_index: u64,
+    pub last_applied: u64,
+    pub next_index:   std::collections::HashMap<NodeId, u64>,
+    pub match_index:  std::collections::HashMap<NodeId, u64>,
+}
+
+impl VolatileState {
+    pub fn new() -> Self {
+        Self {
+            commit_index: 0, last_applied: 0,
+            next_index: std::collections::HashMap::new(),
+            match_index: std::collections::HashMap::new(),
+        }
+    }
+}
