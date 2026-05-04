@@ -87,6 +87,8 @@ impl RaftNode {
         if args.leader_commit > self.volatile.commit_index {
             self.volatile.commit_index = args.leader_commit.min(self.last_log_index());
         }
+        self.apply_committed_entries();
+
         AppendResponse {
             term: self.persistent.current_term,
             success: true,
@@ -105,6 +107,7 @@ impl RaftNode {
             self.volatile.match_index.insert(from, match_idx);
             self.volatile.next_index.insert(from, match_idx + 1);
             self.try_advance_commit_index();
+            self.apply_committed_entries();
             vec![]
         } else {
             let next = self.volatile.next_index.get(&from).copied().unwrap_or(1);
