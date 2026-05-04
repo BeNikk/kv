@@ -129,6 +129,20 @@ impl RaftNode {
             }
         }
     }
+    /// Drain all committed-but-not-yet-applied log entries
+    /// into the KV state machine. Call after any commit_index change.
+    pub fn apply_committed_entries(&mut self) {
+        while self.volatile.last_applied < self.volatile.commit_index {
+            let next = self.volatile.last_applied + 1;
+            if let Some(entry) = self.get_entry(next) {
+                let cmd = entry.command.clone();
+                self.store.apply(next, &cmd);
+                self.volatile.last_applied = next;
+            } else {
+                break;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
