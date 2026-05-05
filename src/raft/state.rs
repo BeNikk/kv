@@ -23,6 +23,21 @@ impl PersistentState {
             log: vec![],
         }
     }
+    pub fn save(&self, path: &str) -> std::io::Result<()> {
+        let json = serde_json::to_string(self)?;
+        let tmp = format!("{}.tmp", path);
+        std::fs::write(&tmp, &json)?;
+        std::fs::rename(&tmp, path)?;
+        Ok(())
+    }
+
+    pub fn load(path: &str) -> std::io::Result<Self> {
+        match std::fs::read_to_string(path) {
+            Ok(json) => Ok(serde_json::from_str(&json)?),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::new()),
+            Err(e) => Err(e),
+        }
+    }
 }
 // this is for the volatile state of a node, it is not persisted, it is reset when the node starts.
 #[derive(Debug)]
