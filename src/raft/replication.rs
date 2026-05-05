@@ -43,16 +43,16 @@ impl RaftNode {
             .collect()
     }
     pub fn handle_append_entries(&mut self, args: AppendRequest) -> AppendResponse {
-        // Rule 1: stale leader
         if args.term < self.persistent.current_term {
             return AppendResponse {
                 term: self.persistent.current_term,
                 success: false,
             };
         }
-        self.become_follower(args.term);
 
-        // Rule 2: consistency check
+        self.become_follower(args.term);
+        self.persist(); // term change persisted
+
         if args.prev_log_index > 0 {
             match self.get_entry(args.prev_log_index) {
                 None => {
@@ -65,6 +65,8 @@ impl RaftNode {
                     self.persistent
                         .log
                         .truncate((args.prev_log_index - 1) as usize);
+
+                    self.persist(); // log changed (truncate)
                     return AppendResponse {
                         term: self.persistent.current_term,
                         success: false,
@@ -73,7 +75,7 @@ impl RaftNode {
                 _ => {}
             }
         }
-        // Rule 3: append entries
+
         for entry in args.entries {
             let idx = entry.index as usize;
             if idx <= self.persistent.log.len() {
@@ -83,11 +85,16 @@ impl RaftNode {
                 self.persistent.log.push(entry);
             }
         }
-        // Rule 4: advance commit index
+
+        self.persist(); // log updated
+
         if args.leader_commit > self.volatile.commit_index {
             self.volatile.commit_index = args.leader_commit.min(self.last_log_index());
         }
+
+        // apply first, then persist final state
         self.apply_committed_entries();
+        self.persist();
 
         AppendResponse {
             term: self.persistent.current_term,
