@@ -185,4 +185,17 @@ mod tests {
         leader.handle_append_response(2, true, 1);
         assert_eq!(leader.volatile.commit_index, 1);
     }
+    #[test]
+    fn committed_entries_applied_to_store() {
+        let mut leader = make_leader(1, vec![2, 3]);
+        leader.propose(Command::Set {
+            key: "name".into(),
+            value: "alice".into(),
+        });
+        // simulate majority ack from node 2
+        leader.handle_append_response(2, true, 1);
+        // commit_index should be 1, applied to store
+        assert_eq!(leader.volatile.last_applied, 1);
+        assert_eq!(leader.store.get("name").map(|s| s.as_str()), Some("alice"));
+    }
 }
