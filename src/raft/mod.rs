@@ -34,4 +34,8 @@ impl RaftNode {
             commit_rx,
         }
     }
+    pub fn persist(&self) {
+        let path = format!("raft-state-node-{}.json", self.id);
+        self.persistent.save(&path).expect("persist failed — fatal");
+    }
 }
