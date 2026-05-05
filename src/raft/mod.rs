@@ -66,4 +66,13 @@ pub enum RaftCommand {
         args: VoteRequest,
         reply: oneshot::Sender<VoteResponse>,
     },
+    HandleAppendResponse {
+        from: NodeId,
+        success: bool,
+        match_index: u64,
+    },
+    HandleVoteResponse {
+        from: NodeId,
+        resp: crate::raft::state::VoteResponse,
+    },
 }
