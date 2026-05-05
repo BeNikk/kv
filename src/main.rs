@@ -7,10 +7,11 @@ mod storage;
 use crate::rpc::proto::raft_rpc_server::RaftRpcServer;
 use crate::rpc::server::RaftService;
 use raft::RaftNode;
+
 use std::collections::HashMap;
+use tokio::sync::mpsc;
 
 #[tokio::main]
-
 async fn main() {
     println!("raft-kv node starting...");
 
@@ -25,13 +26,24 @@ async fn main() {
         (5u64, "http://localhost:4005".to_string()),
     ]);
 
-    // 4. Create channel to talk to Raft actor
-    let (tx, rx) = tokio::sync::mpsc::channel(64);
+    let (tx, rx) = mpsc::channel(64);
 
-    // 5. Start Raft actor (brain)
     tokio::spawn(raft::actor::run_raft_actor(node, rx, peer_addrs));
 
-    // 6. Start HTTP API
+    let raft_service = RaftService {
+        raft_tx: tx.clone(),
+    };
+
+    tokio::spawn(async move {
+        println!("gRPC server running on port 4001");
+
+        tonic::transport::Server::builder()
+            .add_service(RaftRpcServer::new(raft_service))
+            .serve("0.0.0.0:4001".parse().unwrap())
+            .await
+            .unwrap();
+    });
+
     let state = api::AppState {
         raft_tx: tx,
         commit_rx,
