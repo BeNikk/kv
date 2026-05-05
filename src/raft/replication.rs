@@ -141,6 +141,7 @@ impl RaftNode {
                 let cmd = entry.command.clone();
                 self.store.apply(next, &cmd);
                 self.volatile.last_applied = next;
+                self.commit_tx.send(self.volatile.last_applied).ok();
             } else {
                 break;
             }
