@@ -16,7 +16,7 @@ pub struct RaftNode {
     pub votes_received: HashSet<NodeId>,
     pub store: KvStore,
     pub commit_tx: watch::Sender<u64>,
-pub commit_rx: watch::Receiver<u64>,
+    pub commit_rx: watch::Receiver<u64>,
 }
 
 impl RaftNode {
