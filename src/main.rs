@@ -13,37 +13,62 @@ use tokio::sync::mpsc;
 
 #[tokio::main]
 async fn main() {
-    println!("raft-kv node starting...");
+    // Read node ID from CLI
+    let args: Vec<String> = std::env::args().collect();
+    let id: u64 = args
+        .get(1)
+        .expect("provide node id")
+        .parse()
+        .expect("invalid node id");
 
-    let node = RaftNode::new(1, vec![2, 3, 4, 5]);
+    println!("starting node {}", id);
+
+    // Ports per node
+    let http_port = 3000 + id;
+    let grpc_port = 4000 + id;
+
+    // Define cluster (3 nodes for now)
+    let all_nodes = vec![1, 2, 3];
+
+    let peers: Vec<u64> = all_nodes.iter().copied().filter(|&p| p != id).collect();
+
+    let node = RaftNode::new(id, peers);
 
     let commit_rx = node.commit_rx.clone();
 
-    let peer_addrs = HashMap::from([
-        (2u64, "http://localhost:4002".to_string()),
-        (3u64, "http://localhost:4003".to_string()),
-        (4u64, "http://localhost:4004".to_string()),
-        (5u64, "http://localhost:4005".to_string()),
-    ]);
+    // Peer gRPC addresses
+    let mut peer_addrs = HashMap::new();
+    for peer_id in all_nodes {
+        if peer_id != id {
+            peer_addrs.insert(peer_id, format!("http://localhost:{}", 4000 + peer_id));
+        }
+    }
 
+    // Channel for actor
     let (tx, rx) = mpsc::channel(64);
+    let actor_tx = tx.clone();
 
-    tokio::spawn(raft::actor::run_raft_actor(node, rx, peer_addrs));
+    // Start Raft actor
+    tokio::spawn(async move {
+        raft::actor::run_raft_actor(node, rx, peer_addrs, actor_tx).await;
+    });
 
+    // Start gRPC server
     let raft_service = RaftService {
         raft_tx: tx.clone(),
     };
 
     tokio::spawn(async move {
-        println!("gRPC server running on port 4001");
+        println!("node {} gRPC on {}", id, grpc_port);
 
         tonic::transport::Server::builder()
             .add_service(RaftRpcServer::new(raft_service))
-            .serve("0.0.0.0:4001".parse().unwrap())
+            .serve(format!("0.0.0.0:{}", grpc_port).parse().unwrap())
             .await
             .unwrap();
     });
 
+    // Start HTTP server
     let state = api::AppState {
         raft_tx: tx,
         commit_rx,
@@ -51,9 +76,11 @@ async fn main() {
 
     let app = api::router(state);
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+    let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", http_port))
+        .await
+        .unwrap();
 
-    println!("HTTP server running on port 3000");
+    println!("node {} HTTP on {}", id, http_port);
 
     axum::serve(listener, app).await.unwrap();
 }
