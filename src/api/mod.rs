@@ -1,14 +1,3 @@
-use crate::raft::RaftNode;
-use crate::raft::log::Command;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-
-#[derive(Clone)]
-pub struct AppState {
-    pub raft: Arc<RwLock<RaftNode>>,
-}
-
-use crate::raft::state::NodeRole;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -16,6 +5,17 @@ use axum::{
     routing::{get, put},
 };
 use serde::{Deserialize, Serialize};
+use tokio::sync::{mpsc, oneshot, watch};
+
+use crate::raft::RaftCommand;
+use crate::raft::log::Command;
+use crate::raft::state::NodeRole;
+
+#[derive(Clone)]
+pub struct AppState {
+    pub raft_tx: mpsc::Sender<RaftCommand>,
+    pub commit_rx: watch::Receiver<u64>,
+}
 
 #[derive(Deserialize)]
 pub struct PutBody {
@@ -33,47 +33,86 @@ async fn handle_put(
     State(state): State<AppState>,
     Json(body): Json<PutBody>,
 ) -> StatusCode {
-    // Step 1: propose the command, get back the target log index
-    let (target_index, mut commit_rx) = {
-        let mut node = state.raft.write().await;
+    // Step 1: check if this node is leader
+    let (role_tx, role_rx) = oneshot::channel();
+    if state
+        .raft_tx
+        .send(RaftCommand::GetRole { reply: role_tx })
+        .await
+        .is_err()
+    {
+        return StatusCode::INTERNAL_SERVER_ERROR;
+    }
 
-        if node.role != NodeRole::Leader {
-            // Not the leader — client should retry on another node
-            return StatusCode::TEMPORARY_REDIRECT;
-        }
+    let role = match role_rx.await {
+        Ok(r) => r,
+        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR,
+    };
 
-        let cmd = Command::Set {
-            key,
-            value: body.value,
-        };
-        node.propose(cmd); // appends to log, sends AppendEntries
+    if role != NodeRole::Leader {
+        return StatusCode::TEMPORARY_REDIRECT;
+    }
 
-        let target = node.volatile.last_applied + 1; // our entry's index
-        let rx = node.commit_rx.clone();
-        (target, rx)
-    }; // ← release write lock here so Raft can make progress
+    // Step 2: propose command
+    let (reply_tx, reply_rx) = oneshot::channel();
+    if state
+        .raft_tx
+        .send(RaftCommand::Propose {
+            command: Command::Set {
+                key,
+                value: body.value,
+            },
+            reply: reply_tx,
+        })
+        .await
+        .is_err()
+    {
+        return StatusCode::INTERNAL_SERVER_ERROR;
+    }
 
-    // Step 2: wait until commit_index reaches our entry's index
+    // Step 3: get log index
+    let target_index = match reply_rx.await {
+        Ok(idx) => idx,
+        Err(_) => return StatusCode::INTERNAL_SERVER_ERROR,
+    };
+
+    // Step 4: wait for commit
+    let mut commit_rx = state.commit_rx.clone();
+
     loop {
         if *commit_rx.borrow() >= target_index {
-            return StatusCode::OK; // committed by majority
+            return StatusCode::OK;
         }
+
         if commit_rx.changed().await.is_err() {
             return StatusCode::INTERNAL_SERVER_ERROR;
         }
     }
 }
+
 async fn handle_get(
     Path(key): Path<String>,
     State(state): State<AppState>,
 ) -> Result<Json<GetResponse>, StatusCode> {
-    let node = state.raft.read().await;
-    node.store.get(&key)
-        .map(|v| Json(GetResponse {
+    let (reply_tx, reply_rx) = oneshot::channel();
+
+    if state
+        .raft_tx
+        .send(RaftCommand::GetValue {
             key: key.clone(),
-            value: v.clone()
-        }))
-        .ok_or(StatusCode::NOT_FOUND)
+            reply: reply_tx,
+        })
+        .await
+        .is_err()
+    {
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    match reply_rx.await {
+        Ok(Some(value)) => Ok(Json(GetResponse { key, value })),
+        Ok(None) => Err(StatusCode::NOT_FOUND),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
 }
 
 pub fn router(state: AppState) -> Router {

@@ -1,7 +1,9 @@
+pub mod actor;
 pub mod election;
 pub mod log;
 pub mod replication;
 pub mod state;
+use crate::raft::log::Command;
 use crate::storage::KvStore;
 use state::*;
 use std::collections::HashSet;
@@ -38,4 +40,30 @@ impl RaftNode {
         let path = format!("raft-state-node-{}.json", self.id);
         self.persistent.save(&path).expect("persist failed — fatal");
     }
+}
+use tokio::sync::oneshot;
+
+pub enum RaftCommand {
+    Propose {
+        command: Command,
+        reply: oneshot::Sender<u64>,
+    },
+
+    HandleAppendRequest {
+        args: AppendRequest,
+        reply: oneshot::Sender<AppendResponse>,
+    },
+
+    GetRole {
+        reply: oneshot::Sender<NodeRole>,
+    },
+
+    GetValue {
+        key: String,
+        reply: oneshot::Sender<Option<String>>,
+    },
+    HandleVoteRequest {
+        args: VoteRequest,
+        reply: oneshot::Sender<VoteResponse>,
+    },
 }
