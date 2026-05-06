@@ -32,11 +32,7 @@ async fn main() {
 
     let peers: Vec<u64> = all_nodes.iter().copied().filter(|&p| p != id).collect();
 
-    let mut node = RaftNode::new(id, peers);
-    // TEMP: force node 1 to be leader
-    if id == 1 {
-        node.role = crate::raft::state::NodeRole::Leader;
-    }
+    let node = RaftNode::new(id, peers);
 
     let commit_rx = node.commit_rx.clone();
 
