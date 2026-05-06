@@ -6,6 +6,8 @@ use tokio::sync::mpsc;
 
 use crate::rpc::proto::raft_rpc_client::RaftRpcClient;
 use crate::rpc::proto::{AppendEntriesArgs, RequestVoteArgs};
+use rand::Rng;
+use tokio::time::{Duration, Instant, sleep_until};
 use tonic::Request;
 
 pub async fn run_raft_actor(
@@ -14,48 +16,73 @@ pub async fn run_raft_actor(
     peer_addrs: HashMap<NodeId, String>,
     raft_tx: mpsc::Sender<RaftCommand>,
 ) {
-    while let Some(cmd) = rx.recv().await {
-        println!("Node {} role: {:?}", node.id, node.role);
-        match cmd {
-            RaftCommand::Propose { command, reply } => {
-                let msgs = node.propose(command);
-                let index = node.last_log_index();
+    let mut election_deadline = new_election_deadline();
 
-                let _ = reply.send(index);
+    loop {
+        tokio::select! {
 
-                send_messages(msgs, &peer_addrs, raft_tx.clone()).await;
+            // incoming messages
+            Some(cmd) = rx.recv() => {
+                println!("Node {} role: {:?}", node.id, node.role);
+
+                match cmd {
+                    RaftCommand::Propose { command, reply } => {
+                        let msgs = node.propose(command);
+                        let index = node.last_log_index();
+
+                        let _ = reply.send(index);
+
+                        send_messages(msgs, &peer_addrs, raft_tx.clone()).await;
+                    }
+
+                    RaftCommand::HandleAppendRequest { args, reply } => {
+                        let resp = node.handle_append_entries(args);
+                        let _ = reply.send(resp);
+
+                        // reset timer when leader talks
+                        election_deadline = new_election_deadline();
+                    }
+
+                    RaftCommand::HandleVoteRequest { args, reply } => {
+                        let resp = node.handle_request_vote(args);
+                        let _ = reply.send(resp);
+                    }
+
+                    RaftCommand::HandleAppendResponse {
+                        from,
+                        success,
+                        match_index,
+                    } => {
+                        let msgs = node.handle_append_response(from, success, match_index);
+                        send_messages(msgs, &peer_addrs, raft_tx.clone()).await;
+                    }
+
+                    RaftCommand::HandleVoteResponse { from, resp } => {
+                        let msgs = node.handle_vote_response(from, resp);
+                        send_messages(msgs, &peer_addrs, raft_tx.clone()).await;
+                    }
+
+                    RaftCommand::GetRole { reply } => {
+                        let _ = reply.send(node.role.clone());
+                    }
+
+                    RaftCommand::GetValue { key, reply } => {
+                        let _ = reply.send(node.store.get(&key).cloned());
+                    }
+                }
             }
 
-            RaftCommand::HandleAppendRequest { args, reply } => {
-                let resp = node.handle_append_entries(args);
-                let _ = reply.send(resp);
-            }
+            // election timeout
+            _ = sleep_until(election_deadline) => {
+                if node.role != crate::raft::state::NodeRole::Leader {
+                    println!("Node {} starting election", node.id);
 
-            RaftCommand::HandleVoteRequest { args, reply } => {
-                let resp = node.handle_request_vote(args);
-                let _ = reply.send(resp);
-            }
+                    let msgs = node.start_election();
 
-            RaftCommand::HandleAppendResponse {
-                from,
-                success,
-                match_index,
-            } => {
-                let msgs = node.handle_append_response(from, success, match_index);
-                send_messages(msgs, &peer_addrs, raft_tx.clone()).await;
-            }
+                    election_deadline = new_election_deadline();
 
-            RaftCommand::HandleVoteResponse { from, resp } => {
-                let msgs = node.handle_vote_response(from, resp);
-                send_messages(msgs, &peer_addrs, raft_tx.clone()).await;
-            }
-
-            RaftCommand::GetRole { reply } => {
-                let _ = reply.send(node.role.clone());
-            }
-
-            RaftCommand::GetValue { key, reply } => {
-                let _ = reply.send(node.store.get(&key).cloned());
+                    send_messages(msgs, &peer_addrs, raft_tx.clone()).await;
+                }
             }
         }
     }
@@ -145,4 +172,8 @@ async fn send_messages(
             }
         }
     }
+}
+fn new_election_deadline() -> Instant {
+    let ms = rand::thread_rng().gen_range(300..600);
+    Instant::now() + Duration::from_millis(ms)
 }

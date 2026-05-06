@@ -176,6 +176,39 @@ impl RaftNode {
             })
             .collect()
     }
+    pub fn start_election(&mut self) -> Vec<Message> {
+        // become candidate
+        self.role = NodeRole::Candidate;
+
+        // increment term
+        self.persistent.current_term += 1;
+
+        // vote for self
+        self.persistent.voted_for = Some(self.id);
+
+        // reset votes
+        self.votes_received.clear();
+        self.votes_received.insert(self.id);
+
+        println!(
+            "Node {} became Candidate for term {}",
+            self.id, self.persistent.current_term
+        );
+
+        // send RequestVote to all peers
+        self.peers
+            .iter()
+            .map(|&peer| Message::RequestVote {
+                to: peer,
+                args: VoteRequest {
+                    term: self.persistent.current_term,
+                    candidate_id: self.id,
+                    last_log_index: self.last_log_index(),
+                    last_log_term: self.last_log_term(),
+                },
+            })
+            .collect()
+    }
 }
 
 #[cfg(test)]
