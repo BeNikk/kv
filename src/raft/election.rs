@@ -227,6 +227,7 @@ impl RaftNode {
 mod tests {
     use super::*;
     use crate::raft::RaftNode;
+    use crate::raft::log::{Command, LogEntry};
 
     fn three_node_cluster() -> (RaftNode, RaftNode, RaftNode) {
         (
@@ -256,5 +257,52 @@ mod tests {
         let msgs = n1.handle_vote_response(2, resp);
         assert_eq!(n1.role, NodeRole::Leader);
         assert!(!msgs.is_empty());
+    }
+
+    #[test]
+    fn heartbeats_use_follower_next_index_and_prev_term() {
+        let mut leader = RaftNode::new(1, vec![2, 3]);
+        leader.role = NodeRole::Leader;
+        leader.persistent.current_term = 5;
+        leader.persistent.log = vec![
+            LogEntry {
+                term: 1,
+                index: 1,
+                command: Command::NoOp,
+            },
+            LogEntry {
+                term: 2,
+                index: 2,
+                command: Command::NoOp,
+            },
+            LogEntry {
+                term: 5,
+                index: 3,
+                command: Command::NoOp,
+            },
+        ];
+
+        leader.volatile.next_index.insert(2, 3);
+        leader.volatile.next_index.insert(3, 1);
+
+        let beats = leader.send_heartbeats();
+        assert_eq!(beats.len(), 2);
+
+        for beat in beats {
+            match beat {
+                Message::AppendEntries { to, args } => {
+                    if to == 2 {
+                        assert_eq!(args.prev_log_index, 2);
+                        assert_eq!(args.prev_log_term, 2);
+                    } else if to == 3 {
+                        assert_eq!(args.prev_log_index, 0);
+                        assert_eq!(args.prev_log_term, 0);
+                    } else {
+                        panic!("unexpected peer");
+                    }
+                }
+                _ => panic!("unexpected message"),
+            }
+        }
     }
 }

@@ -10,6 +10,10 @@ use rand::Rng;
 use tokio::time::{Duration, Instant, sleep_until};
 use tonic::Request;
 
+fn replicated_match_index(prev_log_index: u64, sent_entries: usize) -> u64 {
+    prev_log_index + sent_entries as u64
+}
+
 pub async fn run_raft_actor(
     mut node: RaftNode,
     mut rx: mpsc::Receiver<RaftCommand>,
@@ -115,8 +119,8 @@ async fn send_messages(
                 tokio::spawn(async move {
                     match RaftRpcClient::connect(addr.clone()).await {
                         Ok(mut client) => {
-                            let sent_count = args.entries.len() as u64;
-                            let replicated_match_index = args.prev_log_index + sent_count;
+                            let ack_match_index =
+                                replicated_match_index(args.prev_log_index, args.entries.len());
                             let req = AppendEntriesArgs {
                                 term: args.term,
                                 leader_id: args.leader_id,
@@ -142,7 +146,7 @@ async fn send_messages(
                                         .send(RaftCommand::HandleAppendResponse {
                                             from: to,
                                             success: r.success,
-                                            match_index: replicated_match_index,
+                                            match_index: ack_match_index,
                                         })
                                         .await;
                                 }
@@ -208,4 +212,16 @@ async fn send_messages(
 fn new_election_deadline() -> Instant {
     let ms = rand::thread_rng().gen_range(300..600);
     Instant::now() + Duration::from_millis(ms)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::replicated_match_index;
+
+    #[test]
+    fn replicated_match_index_handles_empty_and_multi_entry_batches() {
+        assert_eq!(replicated_match_index(0, 0), 0);
+        assert_eq!(replicated_match_index(3, 1), 4);
+        assert_eq!(replicated_match_index(3, 4), 7);
+    }
 }
