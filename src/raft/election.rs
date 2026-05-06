@@ -55,6 +55,7 @@ impl RaftNode {
         // If candidate has higher term, step down
         if args.term > self.persistent.current_term {
             self.become_follower(args.term);
+            self.persist();
         }
 
         // Check if we can vote (haven't voted yet or voted for same candidate)
@@ -134,6 +135,10 @@ impl RaftNode {
     fn become_leader(&mut self) -> Vec<Message> {
         // Mark self as leader
         self.role = NodeRole::Leader;
+        println!(
+            "Node {} became Leader for term {}",
+            self.id, self.persistent.current_term
+        );
 
         let last_index = self.last_log_index();
 

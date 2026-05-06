@@ -53,9 +53,15 @@ impl RaftNode {
                 success: false,
             };
         }
-
-        self.become_follower(args.term);
-        self.persist(); // term change persisted
+        if args.term > self.persistent.current_term {
+            self.become_follower(args.term);
+            self.persist();
+        } else if args.term == self.persistent.current_term {
+            // leader or candidate hearing from valid leader → step down
+            if self.role != NodeRole::Follower {
+                self.role = NodeRole::Follower;
+            }
+        }
 
         if args.prev_log_index > 0 {
             match self.get_entry(args.prev_log_index) {

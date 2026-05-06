@@ -102,6 +102,7 @@ async fn send_messages(
 ) {
     for msg in msgs {
         match msg {
+            // AppendEntries
             Message::AppendEntries { to, args } => {
                 let addr = match peer_addrs.get(&to) {
                     Some(a) => a.clone(),
@@ -111,39 +112,50 @@ async fn send_messages(
                 let raft_tx = raft_tx.clone();
 
                 tokio::spawn(async move {
-                    if let Ok(mut client) = RaftRpcClient::connect(addr).await {
-                        let req = AppendEntriesArgs {
-                            term: args.term,
-                            leader_id: args.leader_id,
-                            prev_log_index: args.prev_log_index,
-                            prev_log_term: args.prev_log_term,
-                            entries: args
-                                .entries
-                                .into_iter()
-                                .map(|e| crate::rpc::proto::LogEntryProto {
-                                    term: e.term,
-                                    index: e.index,
-                                    command: serde_json::to_vec(&e.command).unwrap(),
-                                })
-                                .collect(),
-                            leader_commit: args.leader_commit,
-                        };
+                    match RaftRpcClient::connect(addr.clone()).await {
+                        Ok(mut client) => {
+                            let req = AppendEntriesArgs {
+                                term: args.term,
+                                leader_id: args.leader_id,
+                                prev_log_index: args.prev_log_index,
+                                prev_log_term: args.prev_log_term,
+                                entries: args
+                                    .entries
+                                    .into_iter()
+                                    .map(|e| crate::rpc::proto::LogEntryProto {
+                                        term: e.term,
+                                        index: e.index,
+                                        command: serde_json::to_vec(&e.command).unwrap(),
+                                    })
+                                    .collect(),
+                                leader_commit: args.leader_commit,
+                            };
 
-                        if let Ok(resp) = client.append_entries(Request::new(req)).await {
-                            let r = resp.into_inner();
+                            match client.append_entries(Request::new(req)).await {
+                                Ok(resp) => {
+                                    let r = resp.into_inner();
 
-                            let _ = raft_tx
-                                .send(RaftCommand::HandleAppendResponse {
-                                    from: to,
-                                    success: r.success,
-                                    match_index: args.prev_log_index + 1, // simplification
-                                })
-                                .await;
+                                    let _ = raft_tx
+                                        .send(RaftCommand::HandleAppendResponse {
+                                            from: to,
+                                            success: r.success,
+                                            match_index: args.prev_log_index + 1,
+                                        })
+                                        .await;
+                                }
+                                Err(e) => {
+                                    println!("AppendEntries RPC failed to {}: {:?}", addr, e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            println!("Failed to connect to {}: {:?}", addr, e);
                         }
                     }
                 });
             }
 
+            //  RequestVote
             Message::RequestVote { to, args } => {
                 let addr = match peer_addrs.get(&to) {
                     Some(a) => a.clone(),
@@ -153,26 +165,36 @@ async fn send_messages(
                 let raft_tx = raft_tx.clone();
 
                 tokio::spawn(async move {
-                    if let Ok(mut client) = RaftRpcClient::connect(addr).await {
-                        let req = RequestVoteArgs {
-                            term: args.term,
-                            candidate_id: args.candidate_id,
-                            last_log_index: args.last_log_index,
-                            last_log_term: args.last_log_term,
-                        };
+                    match RaftRpcClient::connect(addr.clone()).await {
+                        Ok(mut client) => {
+                            let req = RequestVoteArgs {
+                                term: args.term,
+                                candidate_id: args.candidate_id,
+                                last_log_index: args.last_log_index,
+                                last_log_term: args.last_log_term,
+                            };
 
-                        if let Ok(resp) = client.request_vote(Request::new(req)).await {
-                            let r = resp.into_inner();
+                            match client.request_vote(Request::new(req)).await {
+                                Ok(resp) => {
+                                    let r = resp.into_inner();
 
-                            let _ = raft_tx
-                                .send(RaftCommand::HandleVoteResponse {
-                                    from: to,
-                                    resp: crate::raft::state::VoteResponse {
-                                        term: r.term,
-                                        vote_granted: r.vote_granted,
-                                    },
-                                })
-                                .await;
+                                    let _ = raft_tx
+                                        .send(RaftCommand::HandleVoteResponse {
+                                            from: to,
+                                            resp: crate::raft::state::VoteResponse {
+                                                term: r.term,
+                                                vote_granted: r.vote_granted,
+                                            },
+                                        })
+                                        .await;
+                                }
+                                Err(e) => {
+                                    println!("RequestVote RPC failed to {}: {:?}", addr, e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            println!("Failed to connect to {}: {:?}", addr, e);
                         }
                     }
                 });
