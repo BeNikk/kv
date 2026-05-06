@@ -1,4 +1,5 @@
 mod api;
+mod dashboard;
 mod raft;
 mod rpc;
 mod sim;

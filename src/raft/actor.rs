@@ -1,5 +1,6 @@
 use crate::raft::state::{Message, NodeId};
 use crate::raft::{RaftCommand, RaftNode};
+use crate::dashboard::{NodeStatus, broadcast_status};
 
 use std::collections::HashMap;
 use tokio::sync::mpsc;
@@ -91,6 +92,17 @@ pub async fn run_raft_actor(
                 }
             }
             _ = heartbeat_interval.tick() => {
+                let status = NodeStatus {
+                    id: node.id,
+                    role: format!("{:?}", node.role),
+                    term: node.persistent.current_term,
+                    log_length: node.last_log_index(),
+                    commit_index: node.volatile.commit_index,
+                    last_applied: node.volatile.last_applied,
+                    alive: true,
+                };
+                broadcast_status(status, 9000).await;
+
                 if node.role == crate::raft::state::NodeRole::Leader {
                     let msgs = node.send_heartbeats();
                     send_messages(msgs, &peer_addrs, raft_tx.clone()).await;
