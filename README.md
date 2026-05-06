@@ -12,8 +12,6 @@ Raft helps all nodes agree on:
 - what order writes happen in,
 - and what is safely committed.
 
----
-
 ## 1. Why This Project Exists
 
 If a system has only one server, that server is a single point of failure.
@@ -294,3 +292,9 @@ curl http://localhost:3001/v1/keys/x1
 ```
 
 ---
+
+## AI Disclosure
+
+This project was built as a learning journey to deeply understand how distributed systems work in practice, especially leader election, replication, and fault handling in Raft.
+
+To build complete understanding, I used AI tools for guidance and explanation, including Claude and ChatGPT. Codex was my primary coding agent for drafting and implementing parts of the system.
