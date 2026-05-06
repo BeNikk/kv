@@ -18,6 +18,7 @@ pub async fn run_raft_actor(
 ) {
     let mut election_deadline = new_election_deadline();
     let mut heartbeat_interval = tokio::time::interval(Duration::from_millis(100));
+    tokio::time::sleep(Duration::from_millis(1000)).await;
 
     loop {
         tokio::select! {

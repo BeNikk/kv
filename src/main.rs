@@ -27,8 +27,8 @@ async fn main() {
     let http_port = 3000 + id;
     let grpc_port = 4000 + id;
 
-    // Define cluster (1 node for now, testing)
-    let all_nodes = vec![1];
+    // Define cluster (3 nodes for now, testing)
+    let all_nodes = vec![1, 2, 3];
 
     let peers: Vec<u64> = all_nodes.iter().copied().filter(|&p| p != id).collect();
 
@@ -45,6 +45,7 @@ async fn main() {
     for peer_id in all_nodes {
         if peer_id != id {
             peer_addrs.insert(peer_id, format!("http://localhost:{}", 4000 + peer_id));
+            println!("Node {} peers: {:?}", id, peer_addrs);
         }
     }
 
