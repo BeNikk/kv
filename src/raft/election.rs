@@ -67,16 +67,17 @@ impl RaftNode {
             || (args.last_log_term == self.last_log_term()
                 && args.last_log_index >= self.last_log_index());
 
-        self.persist();
         // Grant vote only if both conditions are satisfied
         if can_vote && log_ok {
             self.persistent.voted_for = Some(args.candidate_id);
+            self.persist();
 
             VoteResponse {
                 term: self.persistent.current_term,
                 vote_granted: true,
             }
         } else {
+            self.persist();
             VoteResponse {
                 term: self.persistent.current_term,
                 vote_granted: false,
