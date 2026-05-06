@@ -17,6 +17,7 @@ pub async fn run_raft_actor(
     raft_tx: mpsc::Sender<RaftCommand>,
 ) {
     let mut election_deadline = new_election_deadline();
+    let mut heartbeat_interval = tokio::time::interval(Duration::from_millis(100));
 
     loop {
         tokio::select! {
@@ -81,6 +82,12 @@ pub async fn run_raft_actor(
 
                     election_deadline = new_election_deadline();
 
+                    send_messages(msgs, &peer_addrs, raft_tx.clone()).await;
+                }
+            }
+            _ = heartbeat_interval.tick() => {
+                if node.role == crate::raft::state::NodeRole::Leader {
+                    let msgs = node.send_heartbeats();
                     send_messages(msgs, &peer_addrs, raft_tx.clone()).await;
                 }
             }
