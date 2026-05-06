@@ -27,12 +27,16 @@ async fn main() {
     let http_port = 3000 + id;
     let grpc_port = 4000 + id;
 
-    // Define cluster (3 nodes for now)
-    let all_nodes = vec![1, 2, 3];
+    // Define cluster (1 node for now, testing)
+    let all_nodes = vec![1];
 
     let peers: Vec<u64> = all_nodes.iter().copied().filter(|&p| p != id).collect();
 
-    let node = RaftNode::new(id, peers);
+    let mut node = RaftNode::new(id, peers);
+    // TEMP: force node 1 to be leader
+    if id == 1 {
+        node.role = crate::raft::state::NodeRole::Leader;
+    }
 
     let commit_rx = node.commit_rx.clone();
 

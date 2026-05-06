@@ -11,6 +11,10 @@ impl RaftNode {
             command,
         };
         self.persistent.log.push(entry);
+        if self.peers.is_empty() {
+            self.volatile.commit_index = self.last_log_index();
+            self.apply_committed_entries();
+        }
         self.replicate_to_peers()
     }
 

@@ -15,6 +15,7 @@ pub async fn run_raft_actor(
     raft_tx: mpsc::Sender<RaftCommand>,
 ) {
     while let Some(cmd) = rx.recv().await {
+        println!("Node {} role: {:?}", node.id, node.role);
         match cmd {
             RaftCommand::Propose { command, reply } => {
                 let msgs = node.propose(command);
