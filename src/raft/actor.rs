@@ -115,6 +115,8 @@ async fn send_messages(
                 tokio::spawn(async move {
                     match RaftRpcClient::connect(addr.clone()).await {
                         Ok(mut client) => {
+                            let sent_count = args.entries.len() as u64;
+                            let replicated_match_index = args.prev_log_index + sent_count;
                             let req = AppendEntriesArgs {
                                 term: args.term,
                                 leader_id: args.leader_id,
@@ -140,7 +142,7 @@ async fn send_messages(
                                         .send(RaftCommand::HandleAppendResponse {
                                             from: to,
                                             success: r.success,
-                                            match_index: args.prev_log_index + 1,
+                                            match_index: replicated_match_index,
                                         })
                                         .await;
                                 }

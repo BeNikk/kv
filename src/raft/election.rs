@@ -165,20 +165,26 @@ impl RaftNode {
     pub fn send_heartbeats(&self) -> Vec<Message> {
         self.peers
             .iter()
-            .map(|&peer| Message::AppendEntries {
-                to: peer,
-                args: AppendRequest {
-                    term: self.persistent.current_term,
-                    leader_id: self.id,
+            .map(|&peer| {
+                let next = self.volatile.next_index.get(&peer).copied().unwrap_or(1);
+                let prev_idx = next.saturating_sub(1);
+                let prev_term = self.get_entry(prev_idx).map(|e| e.term).unwrap_or(0);
 
-                    // Empty entries = heartbeat (no log replication yet)
-                    prev_log_index: 0,
-                    prev_log_term: 0,
-                    entries: vec![],
+                Message::AppendEntries {
+                    to: peer,
+                    args: AppendRequest {
+                        term: self.persistent.current_term,
+                        leader_id: self.id,
 
-                    // What the leader has committed so far
-                    leader_commit: self.volatile.commit_index,
-                },
+                        // Empty entries = heartbeat (no log replication payload)
+                        prev_log_index: prev_idx,
+                        prev_log_term: prev_term,
+                        entries: vec![],
+
+                        // What the leader has committed so far
+                        leader_commit: self.volatile.commit_index,
+                    },
+                }
             })
             .collect()
     }
