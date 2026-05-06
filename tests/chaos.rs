@@ -208,7 +208,10 @@ fn chaos_leader_disruption_during_heavy_writes() {
         }
     }
 
-    println!("confirmed writes after leader disruption: {}", confirmed.len());
+    println!(
+        "confirmed writes after leader disruption: {}",
+        confirmed.len()
+    );
     assert!(
         !confirmed.is_empty(),
         "test did not confirm any writes; cluster likely failed to stabilize"

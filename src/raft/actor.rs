@@ -1,6 +1,6 @@
+use crate::dashboard::{NodeStatus, broadcast_status};
 use crate::raft::state::{Message, NodeId};
 use crate::raft::{RaftCommand, RaftNode};
-use crate::dashboard::{NodeStatus, broadcast_status};
 
 use std::collections::HashMap;
 use tokio::sync::mpsc;

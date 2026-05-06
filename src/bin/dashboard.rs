@@ -50,7 +50,9 @@ fn render(statuses: &HashMap<u64, NodeStatus>, frame: &mut Frame) {
         .iter()
         .map(|s| {
             let style = match s.role.as_str() {
-                "Leader" => Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                "Leader" => Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
                 "Candidate" => Style::default().fg(Color::Yellow),
                 _ if !s.alive => Style::default().fg(Color::Red),
                 _ => Style::default().fg(Color::White),
