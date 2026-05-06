@@ -134,7 +134,7 @@ async fn send_messages(
 
                             let _ = raft_tx
                                 .send(RaftCommand::HandleAppendResponse {
-                                    from: args.leader_id, // simplification
+                                    from: to,
                                     success: r.success,
                                     match_index: args.prev_log_index + 1, // simplification
                                 })
